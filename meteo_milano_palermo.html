@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Previsioni Meteo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f0f0f0;
+            color: #333;
+        }
+        .container {
+            max-width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            text-align: center;
+        }
+        .forecast {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .forecast:last-child {
+            border-bottom: none;
+        }
+        .forecast .info {
+            flex: 1;
+            text-align: center;
+        }
+        .forecast img {
+            width: 50px;
+            height: 50px;
+        }
+        .forecast .weather-info {
+            display: flex;
+            align-items: center;
+        }
+        .forecast .weather-info div {
+            margin-right: 10px;
+        }
+        .low-rain {
+            background-color: #b4f0a7;
+        }
+        .medium-low-rain {
+            background-color: #dff0a7;
+        }
+        .medium-rain {
+            background-color: #f0e3a7;
+        }
+        .high-rain {
+            background-color: #f0b0a7;
+        }
+        .very-high-rain {
+            background-color: #f07a7a;
+        }
+        .hidden {
+            display: none;
+        }
+        .select-city {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .select-city select {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .select-city button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .error {
+            color: red;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        @media screen and (max-width: 500px) {
+            .forecast {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .forecast .weather-info {
+                margin-top: 10px;
+                justify-content: flex-start;
+            }
+            .forecast .info {
+                text-align: left;
+            }
+            .forecast img {
+                margin-right: 0;
+            }
+            .weather-info {
+                display: inline!important;
+                float: left;
+                width: 50%;
+                text-align: center;
+            }
+            .info {
+                display: inline;
+                float: left;
+                width: 50%;
+            }
+            .forecast  {
+                display: flow-root;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Previsioni Meteo</h1>
+        <div id="select-city" class="select-city">
+            <label for="city">Meteo per quale città?</label>
+            <select id="city">
+                <option value="Milano">Milano</option>
+                <option value="Palermo">Palermo</option>
+            </select>
+            <button onclick="fetchWeather()">Mostra Meteo</button>
+        </div>
+        <div id="error-message" class="error hidden"></div>
+        <div id="forecast-container" class="hidden"></div>
+    </div>
+
+    <script>
+        // Qui va inserità l'api key di open weather map
+        const apiKey = 'INSERISCI_API_KEY';
+
+        async function fetchWeatherData(city) {
+            try {
+                const url = `http://api.openweathermap.org/data/2.5/forecast?q=${city},IT&appid=${apiKey}&units=metric`;
+                const response = await fetch(url);
+                if (!response.ok) {
+                    const errorDetail = await response.json();
+                    throw new Error(`HTTP error! Status: ${response.status} (${response.statusText}) - ${errorDetail.message}`);
+                }
+                const data = await response.json();
+                if (data.cod !== "200") {
+                    throw new Error(`API error! Message: ${data.message}`);
+                }
+                return data;
+            } catch (error) {
+                showError(error.message);
+                throw error;
+            }
+        }
+
+        function interpolateForecasts(currentForecast, nextForecast, ratio) {
+            const temp = currentForecast.main.temp + (nextForecast.main.temp - currentForecast.main.temp) * ratio;
+            const rainProb = currentForecast.pop * 100 + (nextForecast.pop * 100 - currentForecast.pop * 100) * ratio;
+            return { temp, rainProb };
+        }
+
+        function getRainClass(rainProb) {
+            if (rainProb >= 70) return 'very-high-rain';
+            if (rainProb >= 50) return 'high-rain';
+            if (rainProb >= 40) return 'medium-rain';
+            if (rainProb >= 20) return 'medium-low-rain';
+            return 'low-rain';
+        }
+
+        function displayWeatherForecast(city, forecasts) {
+            const forecastContainer = document.getElementById('forecast-container');
+            forecastContainer.innerHTML = `<h2>Previsioni meteo per ${city}</h2>`;
+            forecastContainer.classList.remove('hidden');
+
+            for (let i = 0; i < forecasts.length - 1; i++) {
+                const currentForecast = forecasts[i];
+                const nextForecast = forecasts[i + 1];
+
+                const currentTime = new Date(currentForecast.dt * 1000);
+                const nextTime = new Date(nextForecast.dt * 1000);
+
+                const timeDiff = (nextTime - currentTime) / (1000 * 3600); // Differenza in ore
+
+                for (let j = 0; j < timeDiff; j++) {
+                    const forecastTime = new Date(currentTime.getTime() + j * 3600 * 1000);
+                    const ratio = j / timeDiff;
+                    const { temp, rainProb } = interpolateForecasts(currentForecast, nextForecast, ratio);
+                    const weather = currentForecast.weather[0];
+                    const iconUrl = `http://openweathermap.org/img/wn/${weather.icon}@2x.png`;
+                    const rainClass = getRainClass(rainProb);
+
+                    const forecastDiv = document.createElement('div');
+                    forecastDiv.className = `forecast ${rainClass}`;
+                    forecastDiv.innerHTML = `
+                        <div class="info">
+                            <div>${forecastTime.getHours()}:00</div>
+                            <div>Temp: ${temp.toFixed(2)}°C</div>
+                            <div>Pioggia: ${rainProb.toFixed(2)}%</div>
+                            <div>Condizioni: ${weather.description}</div>
+                        </div>
+                        <div class="weather-info">
+                            <img src="${iconUrl}" alt="${weather.description}">
+                        </div>
+                    `;
+                    forecastContainer.appendChild(forecastDiv);
+                }
+            }
+        }
+       
+    function showError(message) {
+                const errorMessage = document.getElementById('error-message');
+                errorMessage.textContent = message;
+                errorMessage.classList.remove('hidden');
+            }
+
+            function clearError() {
+                const errorMessage = document.getElementById('error-message');
+                errorMessage.textContent = '';
+                errorMessage.classList.add('hidden');
+            }
+
+            async function fetchWeather() {
+                clearError();
+                const citySelect = document.getElementById('city');
+                const city = citySelect.value;
+                try {
+                    const data = await fetchWeatherData(city);
+                    const startOfDay = new Date();
+                    startOfDay.setHours(0, 0, 0, 0);
+
+                    const endOfDay = new Date(startOfDay);
+                    endOfDay.setDate(endOfDay.getDate() + 1);
+
+                    const todayForecasts = data.list.filter(entry => {
+                        const forecastDate = new Date(entry.dt * 1000);
+                        return forecastDate >= startOfDay && forecastDate < endOfDay;
+                    });
+
+                    displayWeatherForecast(city, todayForecasts);
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        </script>
+    </body>
+</html>
